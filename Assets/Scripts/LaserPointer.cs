@@ -1,113 +1,61 @@
 using UnityEngine;
 
-namespace Scripts
+[RequireComponent(typeof(ParticleSystem))]
+public class LaserPointer : MonoBehaviour
 {
-    [RequireComponent(typeof(LineRenderer))]
-    public class LaserPointer : MonoBehaviour
+    [Header("Spread Settings")]
+    [Tooltip("The minimum spread angle (a tight beam).")]
+    [SerializeField] private float minAngle = 1.0f;
+
+    [Tooltip("The maximum spread angle (a wide cone).")]
+    [SerializeField] private float maxAngle = 35.0f;
+
+    [Header("Control Settings")]
+    [Tooltip("How many degrees the angle changes 'per scroll click'.")]
+    [SerializeField] private float spreadAdjustmentStep = 2.0f;
+
+    // --- Cached References ---
+    private ParticleSystem laserParticleSystem;
+    private ParticleSystem.ShapeModule shapeModule;
+
+    // --- State ---
+    private float currentAngle;
+
+    void Awake()
     {
-        [Header("Components")]
-        [SerializeField] private LineRenderer lineRenderer;
-        [SerializeField] private GameObject hitEffect;
-        [SerializeField] private ParticleSystem hitParticles;
+        laserParticleSystem = GetComponent<ParticleSystem>();
+        shapeModule = laserParticleSystem.shape;
+        currentAngle = shapeModule.angle;
+    }
 
-        [Header("Laser Settings")]
-        [SerializeField] private float maxDistance = 100f;
-        [SerializeField] private LayerMask collisionLayerMask;
-
-        [Header("Style & Animation")]
-        [Tooltip("How fast the laser's texture should scroll.")]
-        [SerializeField] private float textureScrollSpeed = 8f;
-
-        private Material _laserMaterial;
-
-        void Awake()
-        {
-            if (lineRenderer == null)
-            {
-                lineRenderer = GetComponent<LineRenderer>();
-            }
-        
-            // Get a reference to the Line Renderer's material to animate it later.
-            _laserMaterial = lineRenderer.material;
-
-            lineRenderer.useWorldSpace = false;
-            ToggleLaser(false); // Start with laser off.
-        }
-
-        void LateUpdate()
-        {
-            if (!lineRenderer.enabled) return;
+    // This is called by PlayerLaserToggle.
+    public void AdjustSpread(float scrollDirection)
+    {
+        // scrollDirection will be +1 (up) or -1 (down)
             
-            AnimateLaser();
+        // Scrolling UP (+1) -> TIGHTER beam (smaller angle)
+        // Scrolling DOWN (-1) -> WIDER beam (smaller angle)
+        currentAngle -= scrollDirection * spreadAdjustmentStep;
 
-            lineRenderer.SetPosition(0, Vector3.zero);
+        // Clamp the value
+        currentAngle = Mathf.Clamp(currentAngle, minAngle, maxAngle);
 
-            if (Physics.Raycast(transform.position, transform.forward, out var hit, maxDistance, collisionLayerMask))
-            {
-                // --- Activate Effects on Hit ---
-                HandleHit(hit);
-                lineRenderer.SetPosition(1, transform.InverseTransformPoint(hit.point));
-            }
-            else
-            {
-                // --- Deactivate Effects on Miss ---
-                HandleMiss();
-                lineRenderer.SetPosition(1, new Vector3(0, 0, maxDistance));
-            }
-        }
+        // Apply the new angle
+        shapeModule.angle = currentAngle;
+    }
 
-        private void AnimateLaser()
+
+    // This function is called by PlayerLaserToggle.
+    public void ToggleLaser(bool isEnabled)
+    {
+        if (isEnabled)
         {
-            float offset = Time.time * textureScrollSpeed;
-            _laserMaterial.mainTextureOffset = new Vector2(offset, 0);
+            laserParticleSystem.Play();
         }
-
-        private void HandleHit(RaycastHit hit)
+        else
         {
-            if (hitEffect)
-            {
-                hitEffect.SetActive(true);
-                hitEffect.transform.position = hit.point;
-                hitEffect.transform.rotation = Quaternion.LookRotation(hit.normal);
-            }
-
-            if (hitParticles)
-            {
-                // Move the particle system to the hit point and align it.
-                hitParticles.transform.position = hit.point;
-                hitParticles.transform.rotation = Quaternion.LookRotation(hit.normal);
-
-                // Ensure the particle system is playing.
-                if (!hitParticles.isPlaying)
-                {
-                    hitParticles.Play();
-                }
-            }
-        }
-
-        private void HandleMiss()
-        {
-            if (hitEffect)
-            {
-                hitEffect.SetActive(false);
-            }
-
-            // If we are not hitting anything, stop the particle system.
-            if (hitParticles && hitParticles.isPlaying)
-            {
-                hitParticles.Stop();
-            }
-        }
-
-        public void ToggleLaser(bool isOn)
-        {
-            lineRenderer.enabled = isOn;
-
-            if (!isOn)
-            {
-                HandleMiss(); // Ensure all effects are off when the laser is toggled off.
-            }
+            // Stop emitting and clear all existing particles.
+            laserParticleSystem.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         }
     }
 }
-
