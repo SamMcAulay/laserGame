@@ -768,6 +768,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8431161131868844367}
+  - component: {fileID: 6897159677171090792}
   m_Layer: 0
   m_Name: Room_Pillars_NS
   m_TagString: Untagged
@@ -785,7 +786,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 2, y: 2, z: 2}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 8594027827253185640}
@@ -812,6 +813,22 @@ Transform:
   - {fileID: 1212923834801467318}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6897159677171090792
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2914390689344550252}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37c8018919c829949a6199f3c310705e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProcGen.Room
+  Door_North: {fileID: 163787430039853986}
+  Door_South: {fileID: 4305641317862758182}
+  Door_East: {fileID: 0}
+  Door_West: {fileID: 0}
 --- !u!1 &3512608669591739660
 GameObject:
   m_ObjectHideFlags: 0
