@@ -370,6 +370,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1833724168}
   - component: {fileID: 1833724169}
+  - component: {fileID: 1833724170}
   m_Layer: 0
   m_Name: _FloorGenerator
   m_TagString: Untagged
@@ -405,6 +406,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ProcGen.FloorGenerator
   playerPrefab: {fileID: 14549183442639747, guid: 94ac5e6f30993ee45b1b02e671651292, type: 3}
+  enemyPrefab: {fileID: 90091856612168922, guid: cf46399a9a295fc43911f3d486270d0e, type: 3}
   startRoomPrefab: {fileID: 5111699092862683031, guid: b209f11efbca7ba43baaed2ca14da077, type: 3}
   roomPrefabs:
   - {fileID: 413600063166562999, guid: c4e951a3acb77aa46a6e524d4de779e1, type: 3}
@@ -428,6 +430,15 @@ MonoBehaviour:
   - {fileID: 7234350965518948517, guid: eb0977892cb10f34090006b742b091d1, type: 3}
   - {fileID: 7300795597891925316, guid: 2931774b0bd0f9a45a079d787cdc28eb, type: 3}
   - {fileID: 1431609283012656650, guid: 5636d5ad851e6f343939dc0e45bc9028, type: 3}
+  - {fileID: 5513085923042005103, guid: 11e3c45f0fa74694498803effceda159, type: 3}
+  - {fileID: 7920723735622387451, guid: b402bfbff610a8c43927f8f3fb113356, type: 3}
+  - {fileID: 8739966154587637601, guid: 84334b56f68707b49bd33242237f6f19, type: 3}
+  - {fileID: 4100898314777330595, guid: d9e5a6d79ae27074b9358a0a077b5342, type: 3}
+  - {fileID: 7234350965518948517, guid: eb0977892cb10f34090006b742b091d1, type: 3}
+  - {fileID: 7300795597891925316, guid: 2931774b0bd0f9a45a079d787cdc28eb, type: 3}
+  - {fileID: 1431609283012656650, guid: 5636d5ad851e6f343939dc0e45bc9028, type: 3}
+  - {fileID: 1431609283012656650, guid: 5636d5ad851e6f343939dc0e45bc9028, type: 3}
+  enemySpawnRoomPrefab: {fileID: 8498537166991670717, guid: a87e79722b8482f46aff6751b89812e1, type: 3}
   endRoomPrefab_N: {fileID: 8529547060012512889, guid: ef159e3aed974104592836aae9632c07, type: 3}
   endRoomPrefab_S: {fileID: 1059674313522172592, guid: 8ce4e9345ca12294193e0e16925710ee, type: 3}
   endRoomPrefab_E: {fileID: 3623309773933299174, guid: 58cbd8d711d5d8d49939d4cf256a4da2, type: 3}
@@ -436,9 +447,42 @@ MonoBehaviour:
   deadEndPrefab_S: {fileID: 3093442506585959978, guid: 087adf01a5e886e4a91c02cd8bee6c6a, type: 3}
   deadEndPrefab_E: {fileID: 3368681825117210325, guid: 5a7f7c19bf5186641a4ab89f38e0c797, type: 3}
   deadEndPrefab_W: {fileID: 5463585723709684601, guid: edc69b3b57943db4ead95d90e0f5e07a, type: 3}
+  navMeshSurface: {fileID: 1833724170}
   gridSize: 20
-  numberOfRooms: 35
-  density: 0.6
+  numberOfRooms: 15
+  density: 0.83
+--- !u!114 &1833724170
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1833724167}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a5ac11cc976e418e8d13136b07e1f52, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshSurface
+  m_SerializedVersion: 0
+  m_AgentTypeID: 0
+  m_CollectObjects: 0
+  m_Size: {x: 10, y: 10, z: 10}
+  m_Center: {x: 0, y: 2, z: 0}
+  m_LayerMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_UseGeometry: 0
+  m_DefaultArea: 0
+  m_GenerateLinks: 0
+  m_IgnoreNavMeshAgent: 1
+  m_IgnoreNavMeshObstacle: 1
+  m_OverrideTileSize: 0
+  m_TileSize: 256
+  m_OverrideVoxelSize: 0
+  m_VoxelSize: 0.16666667
+  m_MinRegionArea: 2
+  m_NavMeshData: {fileID: 0}
+  m_BuildHeightMesh: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

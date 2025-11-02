@@ -28,13 +28,13 @@ public class LaserPointer : MonoBehaviour
         currentAngle = shapeModule.angle;
     }
 
-    // This is called by PlayerLaserToggle.
+    // This is called by PlayerLaserToggle
     public void AdjustSpread(float scrollDirection)
     {
-        // scrollDirection will be +1 (up) or -1 (down)
+        
             
-        // Scrolling UP (+1) -> TIGHTER beam (smaller angle)
-        // Scrolling DOWN (-1) -> WIDER beam (smaller angle)
+        // Scrolling UP (+1) -> TIGHTER beam 
+        // Scrolling DOWN (-1) -> WIDER beam 
         currentAngle -= scrollDirection * spreadAdjustmentStep;
 
         // Clamp the value
@@ -43,9 +43,13 @@ public class LaserPointer : MonoBehaviour
         // Apply the new angle
         shapeModule.angle = currentAngle;
     }
-
-
-    // This function is called by PlayerLaserToggle.
+    
+    public float GetCurrentAngle()
+    {
+        return currentAngle;
+    }
+    
+    // This function is called by PlayerLaserToggle
     public void ToggleLaser(bool isEnabled)
     {
         if (isEnabled)
@@ -54,7 +58,7 @@ public class LaserPointer : MonoBehaviour
         }
         else
         {
-            // Stop emitting and clear all existing particles.
+            // Stop emitting and clear all existing particles
             laserParticleSystem.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         }
     }
