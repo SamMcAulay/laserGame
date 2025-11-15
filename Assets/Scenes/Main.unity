@@ -405,6 +405,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f7109ba6e67e17d4ebcaa67ab269d415, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ProcGen.FloorGenerator
+  baseRoomCount: 15
+  roomCountIncreasePerLevel: 12
   playerPrefab: {fileID: 14549183442639747, guid: 94ac5e6f30993ee45b1b02e671651292, type: 3}
   enemyPrefab: {fileID: 90091856612168922, guid: cf46399a9a295fc43911f3d486270d0e, type: 3}
   startRoomPrefab: {fileID: 5111699092862683031, guid: b209f11efbca7ba43baaed2ca14da077, type: 3}
@@ -449,8 +451,7 @@ MonoBehaviour:
   deadEndPrefab_W: {fileID: 5463585723709684601, guid: edc69b3b57943db4ead95d90e0f5e07a, type: 3}
   navMeshSurface: {fileID: 1833724170}
   gridSize: 20
-  numberOfRooms: 15
-  density: 0.83
+  density: 0.694
 --- !u!114 &1833724170
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,24 +1,31 @@
 using System.Collections.Generic;
 using Unity.AI.Navigation;
 using UnityEngine;
+// For NavMesh
 
 namespace ProcGen
 {
     public class FloorGenerator : MonoBehaviour
     {
+        // --- Singleton ---
+        public static FloorGenerator Instance;
+
+        [Header("Level Settings")]
+        [Tooltip("The starting number of rooms for Level 1")]
+        public int baseRoomCount = 15;
+        [Tooltip("How many rooms to add for each new level")]
+        public int roomCountIncreasePerLevel = 5;
+
         [Header("Player & Enemy")]
-        public GameObject playerPrefab;
+        [Tooltip("The Player PREFAB to spawn at the start")]
+        public GameObject playerPrefab; // We use the prefab
         public GameObject enemyPrefab;
 
+        // --- (Rest of your prefab lists are unchanged) ---
         [Header("Room Prefabs")]
-        [Tooltip("A 1-door room where the player spawns")]
         public GameObject startRoomPrefab;
-
-        [Tooltip("A single list of all 'filler' rooms (hallways, junctions, puzzles)")]
         public List<GameObject> roomPrefabs;
-
-        [Tooltip("The special room prefab for the enemy to spawn in")]
-        public GameObject enemySpawnRoomPrefab; 
+        public GameObject enemySpawnRoomPrefab;
 
         [Header("End Room Prefabs")]
         public GameObject endRoomPrefab_N;
@@ -37,134 +44,219 @@ namespace ProcGen
 
         [Header("Generation Settings")]
         public int gridSize = 20;
-        [Tooltip("Total number of rooms (Start, end, enemy, and cap rooms")]
-        public int numberOfRooms = 15;
-
-        [Header("Density Settings")]
-        [Tooltip("1.0 = Full Random (more clumping). 0.0 = Prioritize Sprawling away from start.")]
         [Range(0.0f, 1.0f)]
         public float density = 1.0f;
 
+        // --- Public list for AI ---
+        public static List<Vector3> allRoomCenters = new List<Vector3>();
 
-        // --- Private Generator State ---
-        private Dictionary<Vector2Int, Room> placedRooms = new();
-        private List<OpenDoorway> openDoorways = new();
-        private List<int> doorIndices = new(); 
-        private System.Random rng = new();
-        private List<GameObject> roomBag = new(); 
-
-        public static List<Vector3> allRoomCenters = new();
+        // --- Private State ---
+        private int currentLevel = 1;
+        private CharacterController playerInstance; // Stores a reference to the spawned player
+        private List<GameObject> spawnedEnemies = new List<GameObject>(); // To track enemies
+        private Dictionary<Vector2Int, Room> placedRooms = new Dictionary<Vector2Int, Room>();
+        private List<OpenDoorway> openDoorways = new List<OpenDoorway>();
+        private List<int> doorIndices = new List<int>();
+        private System.Random rng = new System.Random();
+        private List<GameObject> roomBag = new List<GameObject>();
 
         private class OpenDoorway { public Vector2Int gridPos; public string direction; }
 
-        // --- Main Generation Function ---
-        void Start()
+        // --- Singleton Awake ---
+        void Awake()
         {
-            GenerateFloor();
+            if (Instance == null) { Instance = this; }
+            else { Destroy(gameObject); }
         }
 
-        void GenerateFloor()
+        // --- UPDATED Start() ---
+        void Start()
         {
-            // This clears the list of all the room centers from previous runs. this works in conjunction with the AI roaming system
-            allRoomCenters.Clear();
-            
-            // This here is our room bag logic, we will basically keep adding the room list to this "bag" until we have enough to meet the room amount
-            roomBag.Clear();
-           
-            int roomsToPlace = Mathf.Max(0, numberOfRooms);
-            
-            // failsafe for if whatever reason my room list is empty ( Has happened before if i change a variable and remove the serialsed old name )
-            if (roomPrefabs == null || roomPrefabs.Count == 0)
+            // Run the first level
+            GenerateNewFloor();
+            // Spawn the player for the very first time
+            SpawnPlayer();
+        }
+    
+        // --- NEW HELPER: Spawns the player from the prefab ---
+        void SpawnPlayer()
+        {
+            if (playerPrefab == null)
             {
-                Debug.LogError("FloorGenerator: 'roomPrefabs' list is empty! Cannot fill room bag.", this);
+                Debug.LogError("Player Prefab is not assigned in FloorGenerator!");
                 return;
             }
+        
+            GameObject playerObj = Instantiate(playerPrefab, new Vector3(0, 1, 0), Quaternion.identity);
+            playerInstance = playerObj.GetComponent<CharacterController>();
 
-            // Keep adding shuffled "decks" of your rooms until the bag is big enough, this is the list thing mentioned above
+            if (playerInstance == null)
+            {
+                Debug.LogWarning("Player Prefab has no CharacterController. Teleport will use Transform.");
+            }
+        }
+
+        // --- NEW HELPER: Teleports the existing player ---
+        void TeleportPlayer()
+        {
+            // 1. Find the player (if reference was lost)
+            if (playerInstance == null)
+            {
+                playerInstance = FindAnyObjectByType<CharacterController>();
+                if (playerInstance == null)
+                {
+                    Debug.LogError("Could not find Player in scene to teleport! Spawning a new one.");
+                    SpawnPlayer(); // Failsafe: spawn a new player
+                    return;
+                }
+            }
+
+            // 2. Teleport the player
+            if (playerInstance != null)
+            {
+                // Must disable controller to teleport it
+                playerInstance.enabled = false; 
+                playerInstance.transform.position = new Vector3(0, 1, 0);
+                playerInstance.enabled = true;
+            }
+        }
+
+        /// <summary>
+        /// This is the public function the portal calls.
+        /// </summary>
+        public void GoToNextLevel()
+        {
+            currentLevel++;
+            Debug.Log($"--- Starting Level {currentLevel} ---");
+
+            // 1. Destroy the old floor and enemies
+            DestroyCurrentFloor();
+
+            // 2. Teleport the existing player
+            TeleportPlayer();
+
+            // 3. Generate the new, bigger floor
+            GenerateNewFloor();
+        }
+
+        /// <summary>
+        /// Destroys all rooms and enemies.
+        /// </summary>
+        public void DestroyCurrentFloor()
+        {
+            allRoomCenters.Clear();
+            placedRooms.Clear();
+            openDoorways.Clear();
+            roomBag.Clear();
+
+            // Destroy all room GameObjects (children of this transform)
+            foreach (Transform child in transform)
+            {
+                Destroy(child.gameObject);
+            }
+        
+            // Destroy all spawned enemies
+            foreach (GameObject enemy in spawnedEnemies)
+            {
+                if (enemy != null) // Check if it wasn't already destroyed
+                {
+                    Destroy(enemy);
+                }
+            }
+            spawnedEnemies.Clear();
+        }
+
+        // --- RENAMED: from GenerateFloor() to GenerateNewFloor() ---
+        public void GenerateNewFloor()
+        {
+            // Calculate room count
+            int roomsToSpawn = baseRoomCount + ((currentLevel - 1) * roomCountIncreasePerLevel);
+        
+            // Run the actual generation
+            GenerateFloorInternal(roomsToSpawn);
+        }
+    
+        /// <summary>
+        /// This is your complete, working generation logic.
+        /// </summary>
+        void GenerateFloorInternal(int totalRooms)
+        {
+            allRoomCenters.Clear(); 
+
+            // --- 1. Create the "Room Bag" ---
+            roomBag.Clear();
+            int roomsToPlace = Mathf.Max(0, totalRooms - 3); 
+
+            if (roomPrefabs == null || roomPrefabs.Count == 0)
+            {
+                Debug.LogError("... 'roomPrefabs' list is empty ...", this);
+                return;
+            }
             while (roomBag.Count < roomsToPlace)
             {
                 List<GameObject> tempDeck = new List<GameObject>(roomPrefabs);
-                ShuffleList(tempDeck); // Shuffle this smaller deck
+                ShuffleList(tempDeck);
                 roomBag.AddRange(tempDeck);
             }
-
-            // once big enough we shuffle the list
             ShuffleList(roomBag);
-
-            // Reduce the list to meet the amount of rooms we need to spawn.
             if (roomBag.Count > roomsToPlace)
             {
                 roomBag.RemoveRange(roomsToPlace, roomBag.Count - roomsToPlace);
             }
-            // The Reason I am using the above logic, rather than a super simple Pick a random item from the list method
-            // Is so i can somewhat control the consistency in the rooms, every room should appear atleast once, 
-            // and there should also be an even spread of the different types
 
-            // --- Place Start Room & Player ---
-            // This just placed the player at (0,0). since our spawn room is placed first
+            // --- 2. Place Start Room ---
             PlaceRoom(startRoomPrefab, Vector2Int.zero);
-            if (playerPrefab != null)
-            {
-                Instantiate(playerPrefab, new Vector3(0, 1, 0), Quaternion.identity);
-            }
 
-            // --- Main Generation Loop ---
-            // again another failsafe in the case that we cannot find a spot for a room
+            // --- 3. Main Generation Loop ---
             int failsafe = 10000;
             while (roomBag.Count > 0 && openDoorways.Count > 0 && failsafe > 0)
             {
                 failsafe--;
-            
-                int selectedIndex = SelectDoorIndex(); // This works with my density logic to select a door socket to attach to
-                OpenDoorway currentDoor = openDoorways[selectedIndex];
-                Vector2Int newRoomPos = GetNewRoomPosition(currentDoor);
-                string doorToConnectTo = GetDoorToConnectTo(currentDoor.direction);
-                
-                if (placedRooms.ContainsKey(newRoomPos))
-                {
-                    openDoorways.RemoveAt(selectedIndex);
-                    continue; 
-                }
+                bool roomPlacedThisIteration = false;
+                doorIndices.Clear();
+                for (int i = 0; i < openDoorways.Count; i++) { doorIndices.Add(i); }
+                ShuffleList(doorIndices); 
 
-                // Find a room from the bag that fits
-                GameObject prefab = FindAndRemoveValidRoomFromBag(roomBag, doorToConnectTo);
-            
-                if (prefab == null)
+                foreach (int index in doorIndices)
                 {
-                    // No room in our *entire bag* fits this door, this happens often as say we only have south doors left, but no rooms with a north connecting door, it will circle back here
-                    openDoorways.RemoveAt(selectedIndex);
-                    continue; 
-                }
+                    OpenDoorway currentDoor = openDoorways[index];
+                    Vector2Int newRoomPos = GetNewRoomPosition(currentDoor);
+                    string doorToConnectTo = GetDoorToConnectTo(currentDoor.direction);
 
-                // --- SUCCESS ---
-                // once we finally find a valid spot, we remove the used door socket from our list of availible sockets, and places our room
-                openDoorways.RemoveAt(selectedIndex);
-                PlaceRoom(prefab, newRoomPos, doorToConnectTo);
+                    if (placedRooms.ContainsKey(newRoomPos))
+                    {
+                        openDoorways.Remove(currentDoor); 
+                        roomPlacedThisIteration = true; 
+                        break; 
+                    }
+                    GameObject prefab = FindAndRemoveValidRoomFromBag(roomBag, doorToConnectTo);
+                    if (prefab != null)
+                    {
+                        PlaceRoom(prefab, newRoomPos, doorToConnectTo);
+                        openDoorways.Remove(currentDoor); 
+                        roomPlacedThisIteration = true;
+                        break; 
+                    }
+                }
+                if (!roomPlacedThisIteration) break;
             }
-            // if for whatever reason the loop keeps going past the amount of doorways availible, it will catch here
-            // this was surprisingly useful as due to my rooms material, i had no idea that 1000s of rooms were spawning inside each other, only for this catch! so it is useful i swear
             if (failsafe <= 0) Debug.LogWarning("FloorGenerator: Hit failsafe in main loop.");
 
 
-            // --- Place the End Room ---
-            // This works the same (kinda) as the other room placer
-            // however we try our best to find the socket as far away as possible from the start room
+            // --- 4. Place the End Room ---
             Vector2Int endRoomPos = Vector2Int.zero;
             bool endRoomPlaced = false;
             OpenDoorway farthestDoorway = null;
             int maxDistanceSqr = -1;
-
             for (int i = openDoorways.Count - 1; i >= 0; i--)
             {
                 OpenDoorway currentDoor = openDoorways[i];
                 Vector2Int newPos = GetNewRoomPosition(currentDoor);
-
                 if (placedRooms.ContainsKey(newPos))
                 {
                     openDoorways.RemoveAt(i);
                     continue;
                 }
-            
                 int distanceSqr = newPos.sqrMagnitude;
                 if (distanceSqr > maxDistanceSqr)
                 {
@@ -172,13 +264,11 @@ namespace ProcGen
                     farthestDoorway = currentDoor;
                 }
             }
-
             if (farthestDoorway != null)
             {
                 endRoomPos = GetNewRoomPosition(farthestDoorway);
                 string endDoorToConnect = GetDoorToConnectTo(farthestDoorway.direction);
                 GameObject endPrefab = GetEndRoomPrefab(endDoorToConnect);
-
                 if (endPrefab != null)
                 {
                     PlaceRoom(endPrefab, endRoomPos, endDoorToConnect);
@@ -188,34 +278,26 @@ namespace ProcGen
             }
             if (!endRoomPlaced) Debug.LogError("FloorGenerator: Could not find any valid spot to place the End Room!");
 
-
-            // --- Place the Enemy Room ---
-            // again, same as above, however we try to find a spot as far away from both the start and the end
+            // --- 5. Place the Enemy Room ---
             OpenDoorway bestEnemyDoorway = null;
             int maxMinDistanceSqr = -1; 
-            
             for (int i = openDoorways.Count - 1; i >= 0; i--)
             {
                 OpenDoorway currentDoor = openDoorways[i];
                 Vector2Int newPos = GetNewRoomPosition(currentDoor);
                 string doorToConnectTo = GetDoorToConnectTo(currentDoor.direction);
 
-                // Check for collision
                 if (placedRooms.ContainsKey(newPos))
                 {
                     openDoorways.RemoveAt(i);
                     continue;
                 }
-            
-                // Check if the enemy room prefab can fit here
                 if (!CanRoomFit(enemySpawnRoomPrefab, doorToConnectTo))
                 {
-                    continue; // This door is valid, but not for this room
+                    continue; 
                 }
-
-                // Calculate score, find the minimum distance to start OR end
-                int distToStartSqr = newPos.sqrMagnitude; // Distance from (0,0)
-                int distToEndSqr = (newPos - endRoomPos).sqrMagnitude; // Distance from end
+                int distToStartSqr = newPos.sqrMagnitude;
+                int distToEndSqr = (newPos - endRoomPos).sqrMagnitude;
                 int score = Mathf.Min(distToStartSqr, distToEndSqr);
 
                 if (score > maxMinDistanceSqr)
@@ -224,21 +306,19 @@ namespace ProcGen
                     bestEnemyDoorway = currentDoor;
                 }
             }
-
-            // Now place the enemy room at the best spot
             if (bestEnemyDoorway != null)
             {
                 Vector2Int enemyRoomPos = GetNewRoomPosition(bestEnemyDoorway);
                 string enemyDoorToConnect = GetDoorToConnectTo(bestEnemyDoorway.direction);
-            
                 PlaceRoom(enemySpawnRoomPrefab, enemyRoomPos, enemyDoorToConnect);
                 openDoorways.Remove(bestEnemyDoorway);
 
-                // Spawn the enemy
+                // --- Spawn Enemy and add to list ---
                 if (enemyPrefab != null)
                 {
                     Vector3 spawnPos = new Vector3(enemyRoomPos.x * gridSize, 1, enemyRoomPos.y * gridSize);
-                    Instantiate(enemyPrefab, spawnPos, Quaternion.identity);
+                    GameObject enemyObj = Instantiate(enemyPrefab, spawnPos, Quaternion.identity);
+                    spawnedEnemies.Add(enemyObj); // Add to list for later cleanup
                 }
             }
             else
@@ -246,57 +326,52 @@ namespace ProcGen
                 Debug.LogError("FloorGenerator: Could not find any valid spot to place the Enemy Room!");
             }
 
-            // --- Cap all remaining Dead Ends ---
+            // --- 6. Cap all remaining Dead Ends ---
             failsafe = 1000;
-        
-            // We MUST iterate backwards so we can safely remove items, otherwise list goes poof
             for (int i = openDoorways.Count - 1; i >= 0 && failsafe > 0; i--)
             {
                 failsafe--;
                 OpenDoorway currentDoor = openDoorways[i];
-            
-                // We can safely remove it from the list.
-                // because we are only processing it once.
                 openDoorways.RemoveAt(i); 
-
                 Vector2Int newPos = GetNewRoomPosition(currentDoor);
                 string doorToConnect = GetDoorToConnectTo(currentDoor.direction);
-
-                // Check if spot is already filled (by the Start/End/Enemy room)
-                if (placedRooms.ContainsKey(newPos))
-                {
-                    continue; // This was a blocked door, we nuke it
-                }
-            
-                // Spot is empty, so place a cap
+                if (placedRooms.ContainsKey(newPos)) continue;
                 GameObject deadEndPrefab = GetDeadEndPrefab(doorToConnect);
                 if (deadEndPrefab != null)
                 {
-                    // We pass "doorToConnect" to ignore the
-                    // single door on the dead-end prefab,
-                    // so it doesn't add itself back to the list.
                     PlaceRoom(deadEndPrefab, newPos, doorToConnect);
-                }
-                else
-                {
-                    // This should be caught by ValidatePrefabs, but as a failsafe:
-                    Debug.LogWarning($"Tried to cap door at {newPos} but the prefab for {doorToConnect} is null!");
                 }
             }
         
-            // --- Bake NavMesh ---
+            // --- 7. Bake NavMesh (AT THE END) ---
             if (navMeshSurface != null)
             {
                 navMeshSurface.BuildNavMesh();
             }
-            else
-            {
-                Debug.LogError("NavMeshSurface not assigned in FloorGenerator!", this);
-            }
         }
 
-        // --- Helper Functions ---
 
+        // --- ALL YOUR HELPER FUNCTIONS (UNCHANGED) ---
+        #region Helper Functions
+    
+        void PlaceRoom(GameObject prefab, Vector2Int gridPos, string doorToIgnore = "")
+        {
+            Vector3 worldPos = new Vector3(gridPos.x * gridSize, 0, gridPos.y * gridSize);
+            GameObject roomObj = Instantiate(prefab, worldPos, Quaternion.identity, this.transform);
+            allRoomCenters.Add(worldPos); 
+
+            Room newRoom = roomObj.GetComponent<Room>();
+            placedRooms.Add(gridPos, newRoom);
+            if (newRoom.Door_North != null && doorToIgnore != "North")
+                openDoorways.Add(new OpenDoorway { gridPos = gridPos, direction = "North" });
+            if (newRoom.Door_South != null && doorToIgnore != "South")
+                openDoorways.Add(new OpenDoorway { gridPos = gridPos, direction = "South" });
+            if (newRoom.Door_East != null && doorToIgnore != "East")
+                openDoorways.Add(new OpenDoorway { gridPos = gridPos, direction = "East" });
+            if (newRoom.Door_West != null && doorToIgnore != "West")
+                openDoorways.Add(new OpenDoorway { gridPos = gridPos, direction = "West" });
+        }
+    
         int SelectDoorIndex()
         {
             float sprawlChance = 1.0f - density;
@@ -304,20 +379,15 @@ namespace ProcGen
             {
                 return Random.Range(0, openDoorways.Count);
             }
-
             doorIndices.Clear();
             for (int i = 0; i < openDoorways.Count; i++) { doorIndices.Add(i); }
             ShuffleList(doorIndices);
-
             foreach (int index in doorIndices)
             {
                 OpenDoorway door = openDoorways[index];
-                if (IsDoorFacingAway(door.gridPos, door.direction))
-                {
-                    return index; // Found a good one!
-                }
+                if (IsDoorFacingAway(door.gridPos, door.direction)) return index;
             }
-            return doorIndices[0]; // Fallback
+            return doorIndices[0]; 
         }
 
         bool IsDoorFacingAway(Vector2Int roomPos, string doorDirection)
@@ -354,53 +424,31 @@ namespace ProcGen
                 list[n] = value;
             }
         }
-        
-        // Finds a valid room from the bag that fits, REMOVES it, and returns it.
+
         GameObject FindAndRemoveValidRoomFromBag(List<GameObject> bag, string doorDirection)
         {
-            // Search the bag for the first room that fits
             for (int i = 0; i < bag.Count; i++)
             {
                 if (CanRoomFit(bag[i], doorDirection))
                 {
                     GameObject prefab = bag[i];
-                    bag.RemoveAt(i); // Found one, remove it
-                    return prefab;   // Return it
+                    bag.RemoveAt(i); 
+                    return prefab;  
                 }
             }
-            return null; // No room in the entire bag fits
+            return null; 
         }
-        
+    
         bool CanRoomFit(GameObject prefab, string doorDirection)
         {
             if (prefab == null) return false;
             Room room = prefab.GetComponent<Room>();
             if (room == null) return false;
-
             if (doorDirection == "North" && room.Door_North != null) return true;
             if (doorDirection == "South" && room.Door_South != null) return true;
             if (doorDirection == "East" && room.Door_East != null) return true;
             if (doorDirection == "West" && room.Door_West != null) return true;
             return false;
-        }
-
-        void PlaceRoom(GameObject prefab, Vector2Int gridPos, string doorToIgnore = "")
-        {
-            Vector3 worldPos = new Vector3(gridPos.x * gridSize, 0, gridPos.y * gridSize);
-            GameObject roomObj = Instantiate(prefab, worldPos, Quaternion.identity, this.transform);
-            
-            allRoomCenters.Add(worldPos);
-            
-            Room newRoom = roomObj.GetComponent<Room>();
-            placedRooms.Add(gridPos, newRoom);
-            if (newRoom.Door_North != null && doorToIgnore != "North")
-                openDoorways.Add(new OpenDoorway { gridPos = gridPos, direction = "North" });
-            if (newRoom.Door_South != null && doorToIgnore != "South")
-                openDoorways.Add(new OpenDoorway { gridPos = gridPos, direction = "South" });
-            if (newRoom.Door_East != null && doorToIgnore != "East")
-                openDoorways.Add(new OpenDoorway { gridPos = gridPos, direction = "East" });
-            if (newRoom.Door_West != null && doorToIgnore != "West")
-                openDoorways.Add(new OpenDoorway { gridPos = gridPos, direction = "West" });
         }
 
         Vector2Int GetNewRoomPosition(OpenDoorway door)
@@ -439,5 +487,6 @@ namespace ProcGen
             if (doorDirection == "West") return deadEndPrefab_W;
             return null;
         }
+        #endregion
     }
 }

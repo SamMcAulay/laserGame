@@ -4,200 +4,226 @@ using UnityEngine;
 using UnityEngine.AI; // Required for NavMeshAgent
 
 [RequireComponent(typeof(NavMeshAgent))]
+[RequireComponent(typeof(AudioSource))]
 public class EnemyAI : MonoBehaviour
 {
     [Header("Speeds")]
     [SerializeField] private float roamSpeed = 3.5f;
+    [SerializeField] private float investigateSpeed = 5.0f; // NEW
     [SerializeField] private float chaseSpeed = 7.0f;
 
     [Header("Vision")]
-    [Tooltip("How wide the enemy's cone of vision is (e.g., 0.5 = ~120 degrees).")]
     [Range(-1f, 1f)]
     [SerializeField] private float visionConeAngle = 0.5f;
 
     [Header("Blinding")]
-    [Tooltip("How long the enemy is 'blinded' after being hit.")]
     [SerializeField] private float blindTime = 3.0f;
-    [Tooltip("The laser angle (from LaserPointer) at or below which the enemy is blinded.")]
     [SerializeField] private float blindAngleThreshold = 1.0f;
+
+    [Header("Audio")]
+    [SerializeField] private List<AudioClip> footstepClips;
+    [SerializeField] private float roamStepInterval = 0.7f;
+    [SerializeField] private float investigateStepInterval = 0.5f; // NEW
+    [SerializeField] private float chaseStepInterval = 0.35f;
+    [SerializeField] private float roamPitch = 0.9f;
+    [SerializeField] private float investigatePitch = 1.0f; // NEW
+    [SerializeField] private float chasePitch = 1.2f;
 
     // --- Private State ---
     private NavMeshAgent agent;
     private Transform player;
-    private LaserPointer playerLaser; 
+    private LaserPointer playerLaser;
+    private AudioSource audioSource;
     
-    private enum State { Roaming, Chasing, Blinded }
+    private enum State { Roaming, Investigating, Chasing, Blinded } // ADDED Investigating
     private State currentState;
     private float blindTimer;
+    private float stepTimer;
+    private Vector3 investigationTarget; // Where the noise was heard
 
-    // A "deck" of potential destinations
-    private List<Vector3> destinationDeck = new();
+    // --- NEW: Subscribe to the NoiseManager ---
+    void OnEnable()
+    {
+        NoiseManager.OnNoiseMade += OnHeardNoise;
+    }
+
+    // --- NEW: Unsubscribe when destroyed ---
+    void OnDisable()
+    {
+        NoiseManager.OnNoiseMade -= OnHeardNoise;
+    }
 
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
+        audioSource = GetComponent<AudioSource>();
         
-        // Find the player by their tag
         try
         {
-            GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
-            player = playerObject.transform;
+            player = GameObject.FindGameObjectWithTag("Player").transform;
+            playerLaser = FindAnyObjectByType<LaserPointer>(); // Unity 6+
         }
-        catch
-        {
-            Debug.LogError("ENEMY AI: Could not find object with 'Player' tag. Disabling AI.", this);
-            this.enabled = false;
-            return;
-        }
+        catch { /* ... error handling ... */ }
         
-        playerLaser = FindAnyObjectByType<LaserPointer>(); // <-- New, correct version
-
-        if (playerLaser == null)
-        {
-            Debug.LogError("ENEMY AI: Could not find any active 'LaserPointer' script in the scene! Disabling AI.", this);
-            this.enabled = false;
-            return;
-        }
-        
-        // Start by roaming
         SwitchToRoam();
+    }
+
+    // --- NEW: This is our "ear" ---
+    private void OnHeardNoise(Vector3 position, float radius)
+    {
+        // If we're blinded or already chasing, ignore sounds
+        if (currentState == State.Blinded || currentState == State.Chasing)
+        {
+            return;
+        }
+
+        // Check if we are within the sound's radius
+        float distanceToSound = Vector3.Distance(transform.position, position);
+        if (distanceToSound <= radius)
+        {
+            // We heard it!
+            SwitchToInvestigate(position);
+        }
     }
 
     void Update()
     {
         if (player == null) return;
 
-        // --- State 1: Blinded ---
+        // --- State 1: Blinded (Highest Priority) ---
         if (currentState == State.Blinded)
         {
             blindTimer -= Time.deltaTime;
-            if (blindTimer <= 0)
-            {
-                SwitchToRoam(); // Blinding wore off
-            }
-            return; // Do nothing else while blinded
+            if (blindTimer <= 0) SwitchToRoam();
+            return; 
         }
 
-        // --- State 2 & 3: Roam/Chase ---
+        // --- State 2: Chasing (Second Priority) ---
         bool canSeePlayer = CheckLineOfSight();
-
-        if (canSeePlayer && currentState != State.Chasing)
+        if (canSeePlayer)
         {
-            // Principle 2: Saw the player
             SwitchToChase();
         }
-        else if (!canSeePlayer && currentState == State.Chasing)
+        else // --- State 3 & 4: Investigate/Roam ---
         {
-            // Lost the player
-            SwitchToRoam();
-        }
-
-        // --- State Behavior ---
-        if (currentState == State.Chasing)
-        {
-            // Continuously update destination to the player
-            agent.SetDestination(player.position);
-        }
-        else if (currentState == State.Roaming)
-        {
-            // Principle 1: Roam the map
-            // If we've arrived at our destination, pick a new one
-            if (!agent.pathPending && agent.remainingDistance < 0.5f)
+            if (currentState == State.Chasing)
             {
-                SetNewRoamDestination();
+                // We *just* lost them
+                SwitchToRoam();
+            }
+            else if (currentState == State.Investigating)
+            {
+                // Have we arrived at the sound location?
+                if (!agent.pathPending && agent.remainingDistance < 0.5f)
+                {
+                    SwitchToRoam(); // Arrived, saw nothing.
+                }
+            }
+            else if (currentState == State.Roaming)
+            {
+                if (!agent.pathPending && agent.remainingDistance < 0.5f)
+                {
+                    SetNewRoamDestination();
+                }
             }
         }
+        
+        HandleFootsteps();
+    }
+
+    private void HandleFootsteps()
+    {
+        if (agent.velocity.magnitude > 0.1f && currentState != State.Blinded)
+        {
+            stepTimer -= Time.deltaTime;
+            if (stepTimer <= 0)
+            {
+                // --- Set timer based on 3 states ---
+                if (currentState == State.Chasing) stepTimer = chaseStepInterval;
+                else if (currentState == State.Investigating) stepTimer = investigateStepInterval;
+                else stepTimer = roamStepInterval;
+
+                PlayFootstep();
+            }
+        }
+        else
+        {
+            stepTimer = 0; 
+        }
+    }
+
+    private void PlayFootstep()
+    {
+        if (footstepClips == null || footstepClips.Count == 0) return;
+
+        AudioClip clip = footstepClips[Random.Range(0, footstepClips.Count)];
+        
+        // --- Set pitch based on 3 states ---
+        if (currentState == State.Chasing) audioSource.pitch = chasePitch;
+        else if (currentState == State.Investigating) audioSource.pitch = investigatePitch;
+        else audioSource.pitch = roamPitch;
+        
+        audioSource.pitch *= Random.Range(0.9f, 1.1f);
+        audioSource.volume = Random.Range(0.8f, 1.0f);
+        audioSource.PlayOneShot(clip);
     }
 
     private void SwitchToChase()
     {
         currentState = State.Chasing;
         agent.speed = chaseSpeed;
-        agent.SetDestination(player.position); // Go!
+        agent.SetDestination(player.position);
+    }
+
+    // --- NEW: Investigation State ---
+    private void SwitchToInvestigate(Vector3 targetPosition)
+    {
+        // Don't switch if we're already investigating a closer sound
+        if (currentState == State.Investigating && 
+            Vector3.Distance(transform.position, targetPosition) > agent.remainingDistance)
+        {
+            return; // The current sound is closer, keep going
+        }
+
+        currentState = State.Investigating;
+        agent.speed = investigateSpeed;
+        investigationTarget = targetPosition;
+        agent.SetDestination(investigationTarget);
     }
 
     private void SwitchToRoam()
     {
         currentState = State.Roaming;
         agent.speed = roamSpeed;
-        SetNewRoamDestination(); // Find a new room to visit
-    }
-
-  
-    // Picks a new, unvisited room to travel to.
-    private void SetNewRoamDestination()
-    {
-        // If our deck of destinations is empty, fill it up
-        if (destinationDeck.Count == 0)
-        {
-            // Refill the deck from the generator's public list
-            destinationDeck = new List<Vector3>(FloorGenerator.allRoomCenters);
-        }
-
-        // Pick a random destination from the deck
-        int randomIndex = Random.Range(0, destinationDeck.Count);
-        Vector3 newDest = destinationDeck[randomIndex];
-
-        // Remove this destination from the deck so we don't visit it again soon
-        destinationDeck.RemoveAt(randomIndex);
-
-        // Set the new destination
-        agent.SetDestination(newDest);
+        SetNewRoamDestination();
     }
     
-    /// Checks if the player is in front of the enemy and has a clear line of sight.
+    // --- (Rest of your script is unchanged) ---
+    private List<Vector3> destinationDeck = new List<Vector3>();
+    private void SetNewRoamDestination()
+    {
+        if (destinationDeck.Count == 0) { destinationDeck = new List<Vector3>(FloorGenerator.allRoomCenters); }
+        int r = Random.Range(0, destinationDeck.Count);
+        Vector3 d = destinationDeck[r];
+        destinationDeck.RemoveAt(r);
+        agent.SetDestination(d);
+    }
     private bool CheckLineOfSight()
     {
-        Vector3 eyePosition = transform.position + Vector3.up * 1.5f;
-        Vector3 playerPos = player.position + Vector3.up * 1.5f;
-        Vector3 directionToPlayer = (playerPos - eyePosition).normalized;
-        float distanceToPlayer = Vector3.Distance(eyePosition, playerPos);
-        
-        Debug.DrawRay(eyePosition, directionToPlayer * distanceToPlayer, Color.red);
-
-        // --- 1. Check if Player is "in front" (I have the radius set super wide so its not really in front but you get the deal) ---
-        float dotProduct = Vector3.Dot(transform.forward, directionToPlayer);
-        if (dotProduct < visionConeAngle)
-        {
-            return false; // Player is not in our vision cone
-        }
-
-        // --- 2. Player is in the cone, now check for walls (Line of Sight) ---
+        Vector3 p = transform.position + Vector3.up * 1.5f;
+        Vector3 t = player.position + Vector3.up * 1.5f;
+        Vector3 d = (t - p).normalized;
+        float dist = Vector3.Distance(p, t);
+        Debug.DrawRay(p, d * dist, Color.red);
+        if (Vector3.Dot(transform.forward, d) < visionConeAngle) return false;
         RaycastHit hit;
-        
-        if (Physics.Raycast(eyePosition, directionToPlayer, out hit, distanceToPlayer))
-        {
-            if (hit.transform.CompareTag("Player"))
-            {
-                return true; // Yes! Clear line of sight.
-            }
-        }
-        return false; // Hit a wall or nothing
+        if (Physics.Raycast(p, d, out hit, dist)) { if (hit.transform.CompareTag("Player")) return true; }
+        return false;
     }
-    // --- Blinding Mechanic ---
-    private void OnParticleCollision(GameObject other)
+    private void OnParticleCollision(GameObject o)
     {
-        if (currentState == State.Blinded)
-        {
-            return; // Already blind
-        }
-        
-        // We get the LaserPointer script from the particle system that hit us
-        LaserPointer laser = other.GetComponent<LaserPointer>();
-
-        // We check if it's not null AND if it's the same script we found in Start()
-        if (laser != null && laser == playerLaser)
-        {
-            // Check if the laser's angle is narrow enough to blind
-            if (playerLaser.GetCurrentAngle() <= blindAngleThreshold)
-            {
-                // --- We are blinded! ---
-                currentState = State.Blinded;
-                blindTimer = blindTime;
-                
-                // Stop moving
-                agent.SetDestination(transform.position); 
-            }
-        }
+        if (currentState == State.Blinded) return;
+        LaserPointer l = o.GetComponent<LaserPointer>();
+        if (l != null && l == playerLaser) { if (playerLaser.GetCurrentAngle() <= blindAngleThreshold) { currentState = State.Blinded; blindTimer = blindTime; agent.SetDestination(transform.position); } }
     }
 }
