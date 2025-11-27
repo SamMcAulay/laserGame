@@ -10,7 +10,7 @@
 
 ## 🛠️ Tech Stack
 
-![Unity](https://img.shields.io/badge/Unity-2021.3%2B-000000?style=for-the-badge&logo=unity&logoColor=white)
+![Unity](https://img.shields.io/badge/Unity-6%2B-000000?style=for-the-badge&logo=unity&logoColor=white)
 ![C#](https://img.shields.io/badge/C%23-239120?style=for-the-badge&logo=c-sharp&logoColor=white)
 ![ShaderLab](https://img.shields.io/badge/ShaderLab-A1A1A1?style=for-the-badge&logo=shaderlab&logoColor=white)
 ![Rider](https://img.shields.io/badge/JetBrains_Rider-000000?style=for-the-badge&logo=jetbrains&logoColor=white)
@@ -26,7 +26,7 @@
 ### Prerequisites
 
 * **Unity Hub**
-* **Unity Editor** (Check `ProjectSettings/ProjectVersion.txt` for the exact version, likely 2021.3 or newer)
+* **Unity Editor** (Check `ProjectSettings/ProjectVersion.txt` for the exact version, likely Unity 6 or newer)
 
 ### Installation
 
