@@ -28,10 +28,10 @@ public class PlayerLaserToggle : MonoBehaviour
     {
         if (laserPointer == null) return;
 
-        // The value.isPressed check ensures this only triggers once per button press.
+        // The value.isPressed check ensures this only triggers once per button press
         if (value.isPressed)
         {
-            // Invert the laser's state (on to off, or off to on).
+            // Invert the laser's state
             _isLaserOn = !_isLaserOn;
 
             // Apply the new state to the actual laser script.
@@ -50,8 +50,7 @@ public class PlayerLaserToggle : MonoBehaviour
         // Check if the user is scrolling
         if (scrollInput != 0f)
         {
-            // Send the normalized direction (+1 for up, -1 for down) 
-            // to the laser script.
+            // Send the normalized direction to the laser script.
             laserPointer.AdjustSpread(Mathf.Sign(scrollInput));
         }
     }

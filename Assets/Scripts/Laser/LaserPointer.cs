@@ -31,10 +31,6 @@ public class LaserPointer : MonoBehaviour
     // This is called by PlayerLaserToggle
     public void AdjustSpread(float scrollDirection)
     {
-        
-            
-        // Scrolling UP (+1) -> TIGHTER beam 
-        // Scrolling DOWN (-1) -> WIDER beam 
         currentAngle -= scrollDirection * spreadAdjustmentStep;
 
         // Clamp the value
