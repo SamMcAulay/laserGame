@@ -1380,7 +1380,7 @@ MonoBehaviour:
   deadEndPrefabW: {fileID: 5463585723709684601, guid: edc69b3b57943db4ead95d90e0f5e07a, type: 3}
   navMeshSurface: {fileID: 1833724170}
   gridSize: 20
-  density: 0.579
+  density: 0.652
 --- !u!114 &1833724170
 MonoBehaviour:
   m_ObjectHideFlags: 0
